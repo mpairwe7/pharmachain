@@ -3,9 +3,11 @@ import { useId } from "react";
 /**
  * Animated glass trade-globe: a frosted glass orb (backdrop-blur over the
  * aurora behind it) carrying a wireframe sphere whose branded azure lines
- * read clearly in BOTH themes (var(--globe-line)), with pulsing supply-route
- * arcs, a slow 3D tilt, a rotating specular sheen (the lit surface turning)
- * and a tilted orbit ring. Pure inline SVG/CSS — no canvas, no runtime JS,
+ * read clearly in BOTH themes (var(--globe-line)). The globe turns — the
+ * meridian group spins 360° around the centre so the longitude lines sweep
+ * through every angle (the reference hero's technique) while the latitude
+ * bands stay put — plus pulsing supply-route arcs, a rotating specular sheen
+ * and a spinning orbit ring. Pure inline SVG/CSS — no canvas, no runtime JS,
  * no external assets — and every animation is neutralised by the global
  * prefers-reduced-motion kill switch. Square 360×360 space so a rounded-full
  * glass layer aligns with the sphere. Adapted from The Drop's hero.
@@ -72,12 +74,8 @@ export function HeroGlobe({ className }: { className?: string }) {
           {/* Fixed top-left specular highlight */}
           <div className="absolute inset-0 rounded-full bg-[radial-gradient(55%_45%_at_34%_28%,oklch(1_0_0/0.45),transparent_58%)] dark:bg-[radial-gradient(55%_45%_at_34%_28%,oklch(1_0_0/0.16),transparent_58%)]" />
 
-          {/* Wireframe sphere + routes — tilted in 3D (no blur here, cheap) */}
-          <svg
-            viewBox="0 0 360 360"
-            className="animate-globe-tilt relative size-full"
-            role="presentation"
-          >
+          {/* Wireframe sphere + routes */}
+          <svg viewBox="0 0 360 360" className="relative size-full" role="presentation">
             <defs>
               <linearGradient id={arcGrad} x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0" stopColor="var(--color-primary)" stopOpacity="0" />
@@ -111,10 +109,10 @@ export function HeroGlobe({ className }: { className?: string }) {
               />
             ))}
 
-            {/* Tilted, spinning orbit ring */}
+            {/* Spinning orbit ring */}
             <g
               className="animate-orbit-slow"
-              style={{ transformOrigin: "180px 180px", transformBox: "fill-box" }}
+              style={{ transformBox: "fill-box", transformOrigin: "center" }}
             >
               <ellipse
                 cx={CX}
@@ -128,16 +126,35 @@ export function HeroGlobe({ className }: { className?: string }) {
               />
             </g>
 
-            {/* Wireframe sphere */}
-            <g>
-              <circle
+            {/* Static silhouette + latitude bands (a globe rotating on its
+                vertical axis: the parallels stay, the meridians sweep). */}
+            <circle
+              cx={CX}
+              cy={CY}
+              r={R}
+              fill="none"
+              stroke="var(--globe-line)"
+              strokeWidth="1.3"
+            />
+            {PARALLELS.map((p, i) => (
+              <ellipse
+                // biome-ignore lint/suspicious/noArrayIndexKey: fixed geometry list
+                key={`p${i}`}
                 cx={CX}
-                cy={CY}
-                r={R}
+                cy={p.cy}
+                rx={p.rx}
+                ry={p.ry}
                 fill="none"
-                stroke="var(--globe-line)"
-                strokeWidth="1.3"
+                stroke="var(--globe-line-soft)"
+                strokeWidth="0.8"
               />
+            ))}
+
+            {/* Meridians spin around the globe centre → the sphere turns */}
+            <g
+              className="animate-globe-spin"
+              style={{ transformBox: "fill-box", transformOrigin: "center" }}
+            >
               {MERIDIANS.map((rx, i) => (
                 <ellipse
                   // biome-ignore lint/suspicious/noArrayIndexKey: fixed geometry list
@@ -149,19 +166,6 @@ export function HeroGlobe({ className }: { className?: string }) {
                   fill="none"
                   stroke={`url(#${meridGrad})`}
                   strokeWidth="0.9"
-                />
-              ))}
-              {PARALLELS.map((p, i) => (
-                <ellipse
-                  // biome-ignore lint/suspicious/noArrayIndexKey: fixed geometry list
-                  key={`p${i}`}
-                  cx={CX}
-                  cy={p.cy}
-                  rx={p.rx}
-                  ry={p.ry}
-                  fill="none"
-                  stroke="var(--globe-line-soft)"
-                  strokeWidth="0.8"
                 />
               ))}
             </g>

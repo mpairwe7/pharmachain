@@ -212,8 +212,19 @@
   .animate-marquee:hover {
     animation-play-state: paused;
   }
+  /* Rotate around the element's own centre (all globe rings share centre). */
   .animate-orbit-slow {
+    transform-box: fill-box;
+    transform-origin: center;
     animation: orbit-spin 48s linear infinite;
+  }
+  /* The wireframe sphere turns: the whole meridian/parallel group spins in
+     2D around the globe centre, so every line sweeps through all angles and
+     reads as the globe rotating (the technique the reference hero uses). */
+  .animate-globe-spin {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: orbit-spin 42s linear infinite;
   }
   .animate-arc-dash {
     animation: arc-dash 4.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
