@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { CompanyProfileUpdate } from "@pharmachain/core";
-import { COMPANY_ROLE_LABELS, PARAM_KEYS, requiredVerificationKinds } from "@pharmachain/core";
+import { COMPANY_ROLE_LABELS, PARAM_KEYS } from "@pharmachain/core";
 import type { CompanyRole } from "@pharmachain/db";
 import { Prisma, prisma } from "@pharmachain/db";
 import { genericEventEmail } from "@pharmachain/email";
@@ -9,8 +9,7 @@ import { conflict, forbidden, notFound } from "../../common/errors";
 import { getIntParam } from "../../lib/params";
 import { createInviteToken, inviteEmailContent } from "../auth/invite-tokens";
 import { sendEmailTo } from "../shared/mailer";
-
-const EXPIRING_SOON_DAYS = 30;
+import { buildVerificationChecklist } from "./verification-checklist";
 
 // Last-admin checks are check-then-act; serializable isolation turns a
 // concurrent demote/deactivate race into a retryable 409 (P2034) instead of
@@ -33,61 +32,12 @@ export class CompanyService {
     });
   }
 
-  /** Checklist backing US-102/105 and the admin's automated checks (US-103). */
+  /** Checklist backing US-102/105 and the admin's automated checks (US-103).
+   *  Shares buildVerificationChecklist with the admin approval gate so the two
+   *  cannot disagree about what a complete checklist is. */
   async verificationChecklist(companyId: string) {
     const company = await prisma.company.findUniqueOrThrow({ where: { id: companyId } });
-    const docs = await prisma.document.findMany({
-      where: {
-        ownerCompanyId: companyId,
-        status: "ACTIVE",
-        uploadCompletedAt: { not: null },
-        kind: {
-          in: [
-            "CERTIFICATE_OF_INCORPORATION",
-            "TRADING_LICENCE",
-            "TAX_ID",
-            "IMPORT_EXPORT_LICENCE",
-            "MANUFACTURING_LICENCE",
-            "GMP_CERTIFICATE",
-            "OTHER_COMPLIANCE",
-          ],
-        },
-      },
-      orderBy: { version: "desc" },
-    });
-    const now = Date.now();
-    const soon = now + EXPIRING_SOON_DAYS * 24 * 60 * 60 * 1000;
-
-    const required = requiredVerificationKinds(company.type).map((kind) => {
-      const doc = docs.find((d) => d.kind === kind);
-      let status: "MISSING" | "UPLOADED" | "EXPIRING_SOON" | "EXPIRED" = "MISSING";
-      if (doc) {
-        status = "UPLOADED";
-        if (doc.expiresAt) {
-          if (doc.expiresAt.getTime() < now) status = "EXPIRED";
-          else if (doc.expiresAt.getTime() < soon) status = "EXPIRING_SOON";
-        }
-      }
-      return {
-        kind,
-        status,
-        documentId: doc?.id ?? null,
-        fileName: doc?.fileName ?? null,
-        expiresAt: doc?.expiresAt ?? null,
-        version: doc?.version ?? null,
-      };
-    });
-
-    const additional = docs
-      .filter((d) => !required.some((r) => r.documentId === d.id))
-      .map((d) => ({
-        kind: d.kind,
-        documentId: d.id,
-        fileName: d.fileName,
-        expiresAt: d.expiresAt,
-        version: d.version,
-      }));
-
+    const { required, additional, complete } = await buildVerificationChecklist(companyId);
     return {
       verificationStatus: company.verificationStatus,
       rejectionReason: company.rejectionReason,
@@ -95,7 +45,7 @@ export class CompanyService {
       reverificationDueAt: company.reverificationDueAt,
       required,
       additional,
-      complete: required.every((r) => r.status === "UPLOADED" || r.status === "EXPIRING_SOON"),
+      complete,
     };
   }
 

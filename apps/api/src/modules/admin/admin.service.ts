@@ -9,9 +9,10 @@ import {
   verificationDecisionEmail,
 } from "@pharmachain/email";
 import { notify } from "@pharmachain/notifications";
-import { conflict, forbidden, notFound } from "../../common/errors";
+import { badRequest, conflict, forbidden, notFound } from "../../common/errors";
 import { env } from "../../env";
 import { hashToken, randomToken } from "../../lib/crypto";
+import { buildVerificationChecklist, describeBlocking } from "../company/verification-checklist";
 import { sendEmailTo } from "../shared/mailer";
 
 const THREE_YEARS_MS = 3 * 365 * 24 * 60 * 60 * 1000;
@@ -88,6 +89,17 @@ export class AdminService {
     if (!company) throw notFound("Company not found");
 
     const approve = decision.decision === "APPROVE";
+    // US-103: approval is a compliance control, not a formality — a company
+    // cannot be verified while a mandatory document is absent or expired. The
+    // blocked kinds are named so the admin knows what to chase.
+    if (approve) {
+      const { blocking } = await buildVerificationChecklist(companyId);
+      if (blocking.length > 0) {
+        throw badRequest(
+          `Cannot approve — mandatory documents outstanding: ${describeBlocking(blocking)}`,
+        );
+      }
+    }
     const result = await prisma.company.updateMany({
       where: {
         id: companyId,

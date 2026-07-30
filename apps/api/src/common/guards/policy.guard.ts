@@ -21,7 +21,11 @@ export class PolicyGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<FastifyRequest>();
 
     if (this.reflector.getAllAndOverride<boolean>(SUPER_ADMIN_KEY, targets)) {
-      if (!req.user?.isSuperAdmin) throw unauthorized("Super admin access required");
+      // 403, not 401: the caller is authenticated, they just lack the role
+      // (US-204). A 401 tells the web client the session died, and it signs the
+      // user out and bounces them to /login — from a valid session.
+      if (!req.user) throw unauthorized();
+      if (!req.user.isSuperAdmin) throw forbidden("Super admin access required");
     }
 
     const permission = this.reflector.getAllAndOverride<Permission | undefined>(
