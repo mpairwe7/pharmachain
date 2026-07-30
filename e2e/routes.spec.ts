@@ -1,4 +1,12 @@
-import { type Browser, expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import {
+  ADMIN_PASSWORD as ADMIN_PW,
+  API_PATH,
+  DEMO_PASSWORD as DEMO_PW,
+  firstId,
+  signIn,
+  visit,
+} from "./helpers";
 
 /**
  * Route-render coverage: every major frontend route is visited against the
@@ -7,34 +15,6 @@ import { type Browser, expect, type Page, test } from "@playwright/test";
  * and never falls through to the error boundary. Confirms the API returns
  * data shaped as each page's typed contract expects.
  */
-const DEMO_PW = process.env.SEED_DEMO_PASSWORD ?? "demo-Pass-1";
-const ADMIN_PW = process.env.SEED_SUPER_ADMIN_PASSWORD ?? "admin-ChangeMe-1";
-const ERROR_BOUNDARY = /Something went wrong loading this page/i;
-
-async function signIn(browser: Browser, email: string, password: string): Promise<Page> {
-  const page = await (await browser.newContext()).newPage();
-  await page.goto("/login");
-  await page.getByLabel("Work email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 });
-  return page;
-}
-
-/** Navigate and assert: page loaded, no error boundary, expected content shown. */
-async function visit(page: Page, path: string, expected: RegExp | string) {
-  await page.goto(path, { waitUntil: "domcontentloaded" });
-  await expect(page.getByText(ERROR_BOUNDARY)).toHaveCount(0);
-  await expect(page.getByText(expected).first()).toBeVisible({ timeout: 15_000 });
-}
-
-async function firstId(page: Page, api: string, key = "id"): Promise<string | undefined> {
-  const res = await page.request.get(`/api/backend${api}`);
-  if (!res.ok()) return undefined;
-  const body = await res.json();
-  const arr = Array.isArray(body) ? body : (body.items ?? []);
-  return arr[0]?.[key];
-}
 
 test.describe("Public + auth routes", () => {
   test("landing, auth pages and 404 render", async ({ browser }) => {
@@ -73,20 +53,17 @@ test.describe("Register flow (creates real data)", () => {
     // exercises the US-103 reject path against the deployed stack.
     const admin = await signIn(browser, "admin@pharmachain.local", ADMIN_PW);
     const list = await admin.request.get(
-      `/api/backend/admin/companies?q=${encodeURIComponent(`Route Test Pharma ${tag}`)}`,
+      `${API_PATH}/admin/companies?q=${encodeURIComponent(`Route Test Pharma ${tag}`)}`,
     );
     expect(list.ok()).toBeTruthy();
     const items = (await list.json()).items ?? [];
     expect(items).toHaveLength(1);
-    const rejected = await admin.request.post(
-      `/api/backend/admin/companies/${items[0].id}/verify`,
-      {
-        data: {
-          decision: "REJECT",
-          reason: "Automated e2e registration record — not a real company (test cleanup).",
-        },
+    const rejected = await admin.request.post(`${API_PATH}/admin/companies/${items[0].id}/verify`, {
+      data: {
+        decision: "REJECT",
+        reason: "Automated e2e registration record — not a real company (test cleanup).",
       },
-    );
+    });
     expect(rejected.ok()).toBeTruthy();
     await admin.context().close();
   });
@@ -111,7 +88,7 @@ test.describe("Company user (buyer) routes render seeded data", () => {
 
   test("marketplace + a public listing + a public company profile", async () => {
     await visit(page, "/marketplace", /Paracetamol|marketplace|catalogue|listings/i);
-    const search = await page.request.get("/api/backend/catalogue/search?page=1");
+    const search = await page.request.get(`${API_PATH}/catalogue/search?page=1`);
     const item = (await search.json()).items?.[0];
     if (item?.id)
       await visit(page, `/catalogue/${item.id}`, new RegExp(item.name.slice(0, 12), "i"));
@@ -137,7 +114,7 @@ test.describe("Company user (buyer) routes render seeded data", () => {
   test("catalogue (own), a product + its BOM", async () => {
     await visit(page, "/catalogue", /catalogue|Painex|listing/i);
     await visit(page, "/catalogue/new", /new|listing|name|price/i);
-    const mine = await (await page.request.get("/api/backend/catalogue")).json();
+    const mine = await (await page.request.get(`${API_PATH}/catalogue`)).json();
     const list = Array.isArray(mine) ? mine : (mine.items ?? []);
     const product = list.find((l: { kind: string }) => l.kind === "FINISHED_PRODUCT") ?? list[0];
     if (product?.id) {

@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
+import { apiOrigin } from "./helpers";
 
 /** Behavioral regression against the deployed app: hardening properties that
  *  must not silently regress (security headers, throttling, error envelopes,
  *  no server/tech fingerprint). */
-const API = "/api/backend";
 
 test("security headers from helmet are present on API responses", async ({ request, baseURL }) => {
-  const res = await request.get(`${baseURL}${API}/health`);
+  const res = await request.get(`${apiOrigin(baseURL)}/health`);
   const h = res.headers();
   expect(h["x-content-type-options"]).toBe("nosniff");
   expect(h["x-frame-options"]?.toLowerCase()).toBe("sameorigin");
@@ -28,7 +28,7 @@ test("OTP request is throttled per client IP (10 / 15 min)", async ({ request, b
   const ip = `198.51.100.${Math.floor(Date.now() % 200) + 1}`;
   const codes: number[] = [];
   for (let i = 0; i < 13; i++) {
-    const res = await request.post(`${baseURL}${API}/auth/otp/request`, {
+    const res = await request.post(`${apiOrigin(baseURL)}/auth/otp/request`, {
       headers: { "x-client-ip": ip, "x-proxy-secret": PROXY_SECRET },
       data: { email: "throttle-probe@example.com" },
     });
@@ -47,7 +47,7 @@ test("x-client-ip spoofing cannot rotate rate-limit buckets", async ({ request, 
   // own bucket and all 13 would return 200.)
   const codes: number[] = [];
   for (let i = 0; i < 13; i++) {
-    const res = await request.post(`${baseURL}${API}/auth/otp/request`, {
+    const res = await request.post(`${apiOrigin(baseURL)}/auth/otp/request`, {
       headers: { "x-client-ip": `203.0.113.${i + 1}` },
       data: { email: "spoof-probe@example.com" },
     });
@@ -60,7 +60,7 @@ test("unknown route returns the JSON error envelope, not an HTML stack", async (
   request,
   baseURL,
 }) => {
-  const res = await request.get(`${baseURL}${API}/does-not-exist`);
+  const res = await request.get(`${apiOrigin(baseURL)}/does-not-exist`);
   expect(res.status()).toBe(404);
   const body = await res.json();
   expect(body).toHaveProperty("error");
@@ -74,11 +74,11 @@ test("account enumeration is not possible on OTP request", async ({ request, bas
   const headers = PROXY_SECRET
     ? { "x-client-ip": "198.51.100.240", "x-proxy-secret": PROXY_SECRET }
     : {};
-  const unknown = await request.post(`${baseURL}${API}/auth/otp/request`, {
+  const unknown = await request.post(`${apiOrigin(baseURL)}/auth/otp/request`, {
     headers,
     data: { email: "definitely-not-a-user@example.com" },
   });
-  const known = await request.post(`${baseURL}${API}/auth/otp/request`, {
+  const known = await request.post(`${apiOrigin(baseURL)}/auth/otp/request`, {
     headers,
     data: { email: "ops@nilepharma.demo" },
   });

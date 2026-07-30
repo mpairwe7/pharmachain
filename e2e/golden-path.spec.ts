@@ -1,4 +1,5 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
+import { ADMIN_PASSWORD, API_PATH, DEMO_PASSWORD as PASSWORD, signIn } from "./helpers";
 
 /**
  * Phase 1 golden path against the seeded demo stack (see e2e/README.md):
@@ -10,22 +11,9 @@ import { type Browser, expect, type Page, test } from "@playwright/test";
  */
 const BUYER_EMAIL = "ops@nilepharma.demo";
 const SELLER_EMAIL = "ops@kampalafinechem.demo";
-const PASSWORD = process.env.SEED_DEMO_PASSWORD ?? "demo-Pass-1";
-const ADMIN_PASSWORD = process.env.SEED_SUPER_ADMIN_PASSWORD ?? "admin-ChangeMe-1";
 
 const RUN_TAG = `E2E-${Date.now().toString(36).toUpperCase()}`;
 const RFQ_TITLE = `Ibuprofen BP (API) — 250 kg ${RUN_TAG}`;
-
-async function signIn(browser: Browser, email: string, password = PASSWORD): Promise<Page> {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await page.goto("/login");
-  await page.getByLabel("Work email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
-  return page;
-}
 
 /** Request a paid credit as the company admin, returning the request id. */
 async function requestCredit(
@@ -34,7 +22,7 @@ async function requestCredit(
   kind: "RFQ" | "QUOTATION",
 ): Promise<string> {
   const page = await signIn(browser, email);
-  const res = await page.request.post("/api/backend/billing/credit-requests", {
+  const res = await page.request.post(`${API_PATH}/billing/credit-requests`, {
     data: { kind, count: 2 },
   });
   expect(res.ok(), `credit request (${kind}) for ${email}`).toBeTruthy();
@@ -62,7 +50,7 @@ test.describe
 
       const admin = await signIn(browser, "admin@pharmachain.local", ADMIN_PASSWORD);
       for (const id of [rfqCreditId, quoteCreditId]) {
-        const res = await admin.request.post(`/api/backend/admin/credit-requests/${id}/decide`, {
+        const res = await admin.request.post(`${API_PATH}/admin/credit-requests/${id}/decide`, {
           data: { decision: "CONFIRM" },
         });
         expect(res.ok(), `confirm credit request ${id}`).toBeTruthy();
@@ -120,7 +108,9 @@ test.describe
 
       await page.goto(orderUrl);
       await page.getByRole("button", { name: /advance to pickup scheduled/i }).click();
-      await page.getByLabel("Note").fill("Pickup booked with forwarder (e2e)");
+      // Exact: the logistics panel adds a "Location note" input to this page, so
+      // a substring match on "Note" is ambiguous.
+      await page.getByLabel("Note", { exact: true }).fill("Pickup booked with forwarder (e2e)");
       await page.getByRole("button", { name: /update status/i }).click();
       await expect(page.getByText(/status updated to pickup scheduled/i)).toBeVisible({
         timeout: 20_000,

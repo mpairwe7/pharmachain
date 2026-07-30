@@ -3,6 +3,14 @@
   "ui": "tui",
   "envMode": "loose",
   "globalEnv": ["NODE_ENV"],
+  "globalPassThroughEnv": [
+    "E2E_BASE_URL",
+    "E2E_API_PATH",
+    "E2E_API_ORIGIN",
+    "E2E_PROXY_SECRET",
+    "SEED_DEMO_PASSWORD",
+    "SEED_SUPER_ADMIN_PASSWORD"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
