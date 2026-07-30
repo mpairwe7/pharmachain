@@ -11,11 +11,15 @@ const envSchema = z.object({
     .string()
     .default("true")
     .transform((v) => v === "true"),
-  S3_ENDPOINT: z.url().default("http://localhost:9000"),
-  S3_REGION: z.string().default("us-east-1"),
-  S3_BUCKET: z.string().default("pharmachain-documents"),
-  S3_ACCESS_KEY_ID: z.string().default("minioadmin"),
-  S3_SECRET_ACCESS_KEY: z.string().default("minioadmin"),
+  // Object storage is Cloudflare R2. R2 exposes an S3-compatible API, which is
+  // why the client is an S3 signer (aws4fetch) — but the service, endpoint and
+  // credentials are R2's, and "auto" is R2's required region. Dev runs MinIO
+  // through the same variables as a local stand-in.
+  R2_ENDPOINT: z.url().default("http://localhost:9000"),
+  R2_REGION: z.string().default("auto"),
+  R2_BUCKET: z.string().default("pharmachain-documents"),
+  R2_ACCESS_KEY_ID: z.string().default("minioadmin"),
+  R2_SECRET_ACCESS_KEY: z.string().default("minioadmin"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -31,21 +35,21 @@ if (parsed.data.NODE_ENV === "production") {
   const problems: string[] = [];
   if (parsed.data.AUTH_SECRET.length < 32)
     problems.push("AUTH_SECRET (min 32 chars in production)");
-  if (parsed.data.S3_ACCESS_KEY_ID === "minioadmin")
-    problems.push("S3_ACCESS_KEY_ID (dev default)");
-  if (parsed.data.S3_SECRET_ACCESS_KEY === "minioadmin") {
-    problems.push("S3_SECRET_ACCESS_KEY (dev default)");
+  if (parsed.data.R2_ACCESS_KEY_ID === "minioadmin")
+    problems.push("R2_ACCESS_KEY_ID (dev default)");
+  if (parsed.data.R2_SECRET_ACCESS_KEY === "minioadmin") {
+    problems.push("R2_SECRET_ACCESS_KEY (dev default)");
   }
-  // An unset S3_ENDPOINT used to fall through to the MinIO default, which the
+  // An unset R2_ENDPOINT used to fall through to the MinIO default, which the
   // key checks above do not catch when real credentials are configured. The
   // result was an API that booted fine and handed the browser presigned URLs
   // pointing at http://localhost:9000 — uploads failed with a bare network
   // error and nothing in the logs. Refuse to boot instead.
-  if (parsed.data.S3_ENDPOINT.startsWith("http://localhost")) {
-    problems.push("S3_ENDPOINT (dev default)");
+  if (parsed.data.R2_ENDPOINT.startsWith("http://localhost")) {
+    problems.push("R2_ENDPOINT (dev default)");
   }
-  if (!parsed.data.S3_ENDPOINT.startsWith("https://")) {
-    problems.push("S3_ENDPOINT (must be https in production)");
+  if (!parsed.data.R2_ENDPOINT.startsWith("https://")) {
+    problems.push("R2_ENDPOINT (must be https in production)");
   }
   if (parsed.data.APP_URL.startsWith("http://localhost")) problems.push("APP_URL (dev default)");
   if (problems.length > 0) {

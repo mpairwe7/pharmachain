@@ -24,7 +24,7 @@ principal architecture review and their remediation are traced in
 | API | NestJS 11 on Fastify, executed by Bun (`bun src/main.ts`) |
 | Auth | Auth.js v5 (JWT strategy, 30-min rolling sessions), credentials + email-OTP + optional TOTP 2FA; argon2id via `@node-rs/argon2` |
 | Data | PostgreSQL + Prisma 6 (Neon PG 18 in production; `postgres:17` in local Docker) |
-| Storage | S3-compatible object storage (Cloudflare R2 in production, MinIO in dev) via aws4fetch: uploads written server-side, downloads presigned |
+| Storage | Cloudflare R2 over its S3-compatible API (MinIO in dev) via aws4fetch: uploads written server-side, downloads presigned |
 | Contracts | Zod v4 schemas shared from `@pharmachain/core`; Prisma types shared type-only |
 | Jobs | Shared registry (15 jobs, two tiers) behind an authenticated HTTP dispatcher driven by GitHub Actions cron in production; in-process schedule or standalone worker (`bun run jobs`) for dev — see [Scheduled jobs in production](#scheduled-jobs-in-production) |
 | Observability | Vercel Speed Insights (field Web Vitals), `@vercel/otel` tracing, per-job heartbeats surfaced at `/admin/jobs` |
@@ -102,7 +102,7 @@ flowchart LR
 
   CRON[GitHub Actions cron<br/>frequent */10 · daily 05:00 UTC]
   DB[(PostgreSQL 18<br/>Prisma 6)]
-  S3[(S3 / R2 / MinIO<br/>server-side PUT · presigned GET)]
+  R2[(Cloudflare R2<br/>MinIO in dev<br/>server-side PUT · presigned GET)]
   MAIL[Email provider<br/>console / Resend]
   WA[WhatsApp stub]
 
@@ -113,9 +113,9 @@ flowchart LR
   AUTHJS -->|"/auth/login · /auth/otp"| GUARDS
   GUARDS --> MODULES --> AUDIT
   MODULES --> DB
-  MODULES -->|"PUT bytes · presign GET"| S3
+  MODULES -->|"PUT bytes · presign GET"| R2
   UI -->|"file bytes via PROXY"| PROXY
-  UI -->|presigned GET| S3
+  UI -->|presigned GET| R2
   MODULES --> MAIL
   MODULES --> WA
   CRON -->|Bearer CRON_SECRET| JOBS
@@ -209,7 +209,7 @@ bundle, runs `vercel build` for the web app, assembles the API function into
 the API is merged via the Build Output API, use this script (or CI running
 it) rather than Vercel's git-push builds. Required project env: `AUTH_SECRET`
 (≥32 chars), `DATABASE_URL` (Neon **pooled** URL for serverless), `APP_URL`,
-and non-default `S3_*` values. Feature env on top: `CRON_SECRET` (job
+and non-default `R2_*` values (Cloudflare R2 — see `.env.example`). Feature env on top: `CRON_SECRET` (job
 dispatcher), `PAYMENT_WEBHOOK_SECRET`, `VAPID_PUBLIC_KEY` +
 `VAPID_PRIVATE_KEY` (web push), `PAYMENT_SANDBOX=1` to expose card/mobile
 money without a live Flutterwave key, and optional `WHATSAPP_*` / `RESEND_*`

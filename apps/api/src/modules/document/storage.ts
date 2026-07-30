@@ -1,12 +1,14 @@
 import { AwsClient } from "aws4fetch";
 import { env } from "../../env";
 
-// aws4fetch signs with WebCrypto — tiny and Bun-native. Path-style URLs work
-// for MinIO, Cloudflare R2 and AWS S3 alike.
+// Storage is Cloudflare R2, reached over its S3-compatible API — hence an S3
+// signer (aws4fetch: WebCrypto, tiny, Bun-native) and service: "s3". Path-style
+// URLs are what R2 serves on <account>.r2.cloudflarestorage.com, and they also
+// work against MinIO in dev.
 const client = new AwsClient({
-  accessKeyId: env.S3_ACCESS_KEY_ID,
-  secretAccessKey: env.S3_SECRET_ACCESS_KEY,
-  region: env.S3_REGION,
+  accessKeyId: env.R2_ACCESS_KEY_ID,
+  secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+  region: env.R2_REGION,
   service: "s3",
 });
 
@@ -23,7 +25,7 @@ export function buildStorageKey(companyId: string, fileName: string): string {
 
 function objectUrl(key: string): URL {
   const encoded = key.split("/").map(encodeURIComponent).join("/");
-  return new URL(`${env.S3_ENDPOINT}/${env.S3_BUCKET}/${encoded}`);
+  return new URL(`${env.R2_ENDPOINT}/${env.R2_BUCKET}/${encoded}`);
 }
 
 const STORAGE_OP_TIMEOUT_MS = 10_000;
