@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+} from "@nestjs/common";
 import {
   type DocumentRequestUpload,
   documentListQuerySchema,
@@ -41,6 +52,26 @@ export class DocumentController {
       newValues: { kind: result.document.kind, fileName: result.document.fileName },
     });
     return result;
+  }
+
+  /** Raw file body → storage, server-side. Bound to the binary content-type
+   *  parser registered in bootstrap.ts. */
+  @RequirePermission("document:write")
+  @HttpCode(200)
+  @Put(":id/content")
+  async uploadContent(
+    @CurrentUser() user: AuthUser,
+    @CurrentMembership() membership: Membership,
+    @Param(zodPipe(idParamSchema)) params: { id: string },
+    @Req() req: FastifyRequest,
+  ) {
+    return this.documentService.uploadContent(
+      user,
+      membership,
+      params.id,
+      req.body as Buffer,
+      req.headers["content-type"],
+    );
   }
 
   @RequirePermission("document:write")

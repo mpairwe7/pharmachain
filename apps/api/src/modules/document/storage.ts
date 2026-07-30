@@ -10,7 +10,6 @@ const client = new AwsClient({
   service: "s3",
 });
 
-const PUT_EXPIRES_SECONDS = 900;
 const GET_EXPIRES_SECONDS = 120;
 
 export function sanitizeFileName(name: string): string {
@@ -27,26 +26,15 @@ function objectUrl(key: string): URL {
   return new URL(`${env.S3_ENDPOINT}/${env.S3_BUCKET}/${encoded}`);
 }
 
-export async function presignUpload(
-  key: string,
-  contentType: string,
-): Promise<{ url: string; headers: Record<string, string>; expiresIn: number }> {
-  const url = objectUrl(key);
-  url.searchParams.set("X-Amz-Expires", String(PUT_EXPIRES_SECONDS));
-  const signed = await client.sign(
-    new Request(url, { method: "PUT", headers: { "Content-Type": contentType } }),
-    { aws: { signQuery: true } },
-  );
-  return {
-    url: signed.url,
-    headers: { "Content-Type": contentType },
-    expiresIn: PUT_EXPIRES_SECONDS,
-  };
-}
-
 const STORAGE_OP_TIMEOUT_MS = 10_000;
 
-/** Server-side direct upload for platform-generated files (invoice PDFs). */
+/**
+ * Writes an object server-side — user uploads (via PUT :id/content) and
+ * platform-generated files (invoice PDFs) both land here. Uploads are
+ * deliberately not presigned to the browser: that requires a CORS rule on the
+ * bucket and a publicly reachable endpoint, and fails with an opaque network
+ * error when either is missing.
+ */
 export async function putObject(
   key: string,
   bytes: Uint8Array,

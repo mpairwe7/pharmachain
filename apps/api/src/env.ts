@@ -36,6 +36,17 @@ if (parsed.data.NODE_ENV === "production") {
   if (parsed.data.S3_SECRET_ACCESS_KEY === "minioadmin") {
     problems.push("S3_SECRET_ACCESS_KEY (dev default)");
   }
+  // An unset S3_ENDPOINT used to fall through to the MinIO default, which the
+  // key checks above do not catch when real credentials are configured. The
+  // result was an API that booted fine and handed the browser presigned URLs
+  // pointing at http://localhost:9000 — uploads failed with a bare network
+  // error and nothing in the logs. Refuse to boot instead.
+  if (parsed.data.S3_ENDPOINT.startsWith("http://localhost")) {
+    problems.push("S3_ENDPOINT (dev default)");
+  }
+  if (!parsed.data.S3_ENDPOINT.startsWith("https://")) {
+    problems.push("S3_ENDPOINT (must be https in production)");
+  }
   if (parsed.data.APP_URL.startsWith("http://localhost")) problems.push("APP_URL (dev default)");
   if (problems.length > 0) {
     throw new Error(`Production environment uses development defaults: ${problems.join(", ")}`);

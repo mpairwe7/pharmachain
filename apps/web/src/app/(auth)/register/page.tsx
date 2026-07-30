@@ -41,6 +41,9 @@ export default function RegisterPage() {
   const router = useRouter();
   const form = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
+    // Report a bad field as soon as it is left rather than only on submit, so a
+    // mistyped address is visible before the user reaches the button (US-101).
+    mode: "onTouched",
     defaultValues: {
       company: {
         name: "",

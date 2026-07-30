@@ -1,7 +1,7 @@
 "use client";
 
 import type { DocumentKind } from "@pharmachain/core";
-import { ALLOWED_MIMES, MAX_FILE_SIZE_BYTES } from "@pharmachain/core";
+import { ALLOWED_MIMES, validateUpload } from "@pharmachain/core";
 import { Button } from "@pharmachain/ui/components/button";
 import { Input } from "@pharmachain/ui/components/input";
 import { AlertCircle, Loader2, Paperclip, X } from "lucide-react";
@@ -49,8 +49,9 @@ export function AttachmentPicker({
       toast.error(`Up to ${MAX_ATTACHMENTS} attachments`);
       return;
     }
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      toast.error("Files are limited to 10MB");
+    const rejection = validateUpload(kind, file);
+    if (rejection) {
+      toast.error(rejection);
       return;
     }
     setBusy(true);

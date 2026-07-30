@@ -1,7 +1,12 @@
 "use client";
 
 import type { DocumentKind } from "@pharmachain/core";
-import { ALLOWED_MIMES, expiryRequired, MAX_FILE_SIZE_BYTES } from "@pharmachain/core";
+import {
+  ALLOWED_MIMES,
+  describeAllowedTypes,
+  expiryRequired,
+  validateUpload,
+} from "@pharmachain/core";
 import { Button } from "@pharmachain/ui/components/button";
 import {
   Dialog,
@@ -43,16 +48,20 @@ export function UploadButton({
   const [file, setFile] = useState<File | null>(null);
   const [expiresAt, setExpiresAt] = useState("");
   const [busy, setBusy] = useState(false);
+  // Size/type rejection shown inline — `accept` only filters the file picker,
+  // and the user can always switch it back to "All files".
+  const [rejected, setRejected] = useState<string | null>(null);
   const needsExpiry = expiryRequired(kind);
   const accept = ALLOWED_MIMES[kind].join(",");
 
+  function pick(picked: File | null) {
+    setFile(picked);
+    setRejected(picked ? validateUpload(kind, picked) : null);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) return;
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      toast.error("Files are limited to 10MB");
-      return;
-    }
+    if (!file || rejected) return;
     setBusy(true);
     try {
       await uploadDocument({
@@ -64,7 +73,7 @@ export function UploadButton({
       });
       toast.success(`${file.name} uploaded`);
       setOpen(false);
-      setFile(null);
+      pick(null);
       setExpiresAt("");
       router.refresh();
     } catch (err) {
@@ -85,7 +94,8 @@ export function UploadButton({
         <DialogHeader>
           <DialogTitle>{label}</DialogTitle>
           <DialogDescription>
-            Max 10MB. {needsExpiry ? "Licence documents require an expiry date." : ""}
+            {describeAllowedTypes(kind)}, max 10MB.{" "}
+            {needsExpiry ? "Licence documents require an expiry date." : ""}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
@@ -96,8 +106,15 @@ export function UploadButton({
               type="file"
               accept={accept}
               required
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              aria-invalid={rejected ? true : undefined}
+              aria-describedby={rejected ? `file-error-${kind}` : undefined}
+              onChange={(e) => pick(e.target.files?.[0] ?? null)}
             />
+            {rejected && (
+              <p id={`file-error-${kind}`} role="alert" className="text-sm text-destructive">
+                {rejected}
+              </p>
+            )}
           </div>
           {(needsExpiry || kind === "GMP_CERTIFICATE") && (
             <div className="grid gap-2">
@@ -113,7 +130,7 @@ export function UploadButton({
             </div>
           )}
           <DialogFooter>
-            <Button type="submit" disabled={busy || !file}>
+            <Button type="submit" disabled={busy || !file || rejected !== null}>
               {busy ? "Uploading…" : "Upload"}
             </Button>
           </DialogFooter>

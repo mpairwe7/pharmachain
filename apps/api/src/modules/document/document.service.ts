@@ -1,6 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import type { DocumentRequestUpload } from "@pharmachain/core";
-import { DOCUMENT_KIND_LABELS, isVerificationKind, MAX_FILE_SIZE_BYTES } from "@pharmachain/core";
+import {
+  DOCUMENT_KIND_LABELS,
+  formatFileSize,
+  isAllowedMime,
+  isVerificationKind,
+  MAX_FILE_SIZE_BYTES,
+} from "@pharmachain/core";
 import type { Document } from "@pharmachain/db";
 import { prisma } from "@pharmachain/db";
 import { genericEventEmail } from "@pharmachain/email";
@@ -10,7 +16,7 @@ import { badRequest, forbidden, notFound } from "../../common/errors";
 import { env } from "../../env";
 import type { AuthUser, Membership } from "../../lib/context";
 import { scanUploadedObject } from "./scan";
-import { buildStorageKey, presignDownload, presignUpload, statObject } from "./storage";
+import { buildStorageKey, presignDownload, putObject, statObject } from "./storage";
 
 @Injectable()
 export class DocumentService {
@@ -102,8 +108,58 @@ export class DocumentService {
       });
     }
 
-    const upload = await presignUpload(storageKey, input.contentType);
-    return { document, upload };
+    // No presigned PUT is handed back: the bytes come to PUT :id/content and
+    // this API writes them to storage itself.
+    return { document };
+  }
+
+  /**
+   * Receives the file bytes and writes them to storage server-side.
+   *
+   * Browsers reach this through the web app's same-origin /api/proxy, so an
+   * upload never depends on the object store being reachable from — or
+   * CORS-configured for — the user's browser. A presigned PUT straight from the
+   * page fails with an opaque "network error" whenever the bucket has no CORS
+   * rule for the app origin, which is the default for a new bucket.
+   */
+  async uploadContent(
+    user: AuthUser,
+    membership: Membership,
+    documentId: string,
+    body: Buffer,
+    contentType: string | undefined,
+  ) {
+    const document = await prisma.document.findUnique({ where: { id: documentId } });
+    if (!document || document.ownerCompanyId !== membership.companyId) {
+      throw notFound("Document not found");
+    }
+    if (document.uploadedById !== user.id) {
+      throw forbidden("Only the uploader can upload this document");
+    }
+    if (document.uploadCompletedAt) {
+      throw badRequest("This document has already been uploaded");
+    }
+
+    // Re-check what the client actually sent against what it declared at
+    // request-upload — the declared values are what the checklist and the
+    // download contract are built on.
+    if (body.byteLength === 0) throw badRequest("Uploaded file is empty");
+    if (body.byteLength > MAX_FILE_SIZE_BYTES) {
+      throw badRequest(`File exceeds the ${formatFileSize(MAX_FILE_SIZE_BYTES)} limit`);
+    }
+    if (body.byteLength !== document.size) {
+      throw badRequest("Uploaded file does not match the declared size");
+    }
+    const sent = contentType?.split(";")[0]?.trim();
+    if (sent && sent !== document.contentType) {
+      throw badRequest("Uploaded file does not match the declared content type");
+    }
+    if (!isAllowedMime(document.kind, document.contentType)) {
+      throw badRequest("File type not allowed for this document kind");
+    }
+
+    await putObject(document.storageKey, new Uint8Array(body), document.contentType);
+    return { id: document.id, size: body.byteLength };
   }
 
   async completeUpload(user: AuthUser, membership: Membership, documentId: string) {

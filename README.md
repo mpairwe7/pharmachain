@@ -24,7 +24,7 @@ principal architecture review and their remediation are traced in
 | API | NestJS 11 on Fastify, executed by Bun (`bun src/main.ts`) |
 | Auth | Auth.js v5 (JWT strategy, 30-min rolling sessions), credentials + email-OTP + optional TOTP 2FA; argon2id via `@node-rs/argon2` |
 | Data | PostgreSQL + Prisma 6 (Neon PG 18 in production; `postgres:17` in local Docker) |
-| Storage | S3-compatible object storage (MinIO in dev), presigned PUT/GET via aws4fetch |
+| Storage | S3-compatible object storage (Cloudflare R2 in production, MinIO in dev) via aws4fetch: uploads written server-side, downloads presigned |
 | Contracts | Zod v4 schemas shared from `@pharmachain/core`; Prisma types shared type-only |
 | Jobs | Shared registry (15 jobs, two tiers) behind an authenticated HTTP dispatcher driven by GitHub Actions cron in production; in-process schedule or standalone worker (`bun run jobs`) for dev — see [Scheduled jobs in production](#scheduled-jobs-in-production) |
 | Observability | Vercel Speed Insights (field Web Vitals), `@vercel/otel` tracing, per-job heartbeats surfaced at `/admin/jobs` |
@@ -102,7 +102,7 @@ flowchart LR
 
   CRON[GitHub Actions cron<br/>frequent */10 · daily 05:00 UTC]
   DB[(PostgreSQL 18<br/>Prisma 6)]
-  S3[(S3 / MinIO<br/>presigned URLs)]
+  S3[(S3 / R2 / MinIO<br/>server-side PUT · presigned GET)]
   MAIL[Email provider<br/>console / Resend]
   WA[WhatsApp stub]
 
@@ -113,8 +113,9 @@ flowchart LR
   AUTHJS -->|"/auth/login · /auth/otp"| GUARDS
   GUARDS --> MODULES --> AUDIT
   MODULES --> DB
-  MODULES -->|presign only| S3
-  UI -->|PUT/GET directly| S3
+  MODULES -->|"PUT bytes · presign GET"| S3
+  UI -->|"file bytes via PROXY"| PROXY
+  UI -->|presigned GET| S3
   MODULES --> MAIL
   MODULES --> WA
   CRON -->|Bearer CRON_SECRET| JOBS
@@ -158,10 +159,14 @@ Key properties:
 - **Egress control** — outbound webhook deliveries resolve DNS first and
   refuse private, link-local, CGNAT and metadata ranges (SSRF guard), never
   follow redirects, and drain unread bodies.
-- **Files** — clients never touch storage credentials: the API issues presigned
-  PUT/GET URLs for random UUID keys; uploads pass a virus-scan stub before the
-  document becomes downloadable; re-uploads create new versions and retain the
-  old ones.
+- **Files** — clients never touch storage credentials or the storage endpoint:
+  upload bytes go to the API through the same-origin proxy and the API writes
+  them to a random UUID key, so a bucket needs no CORS rule and no public write
+  path. Size and type are enforced by one shared gate
+  (`validateUpload` in `@pharmachain/core`) in the picker, again on the upload
+  route, and again against what actually landed in the bucket. Downloads are
+  short-lived presigned GETs. Uploads pass a virus-scan stub before the document
+  becomes downloadable; re-uploads create new versions and retain the old ones.
 
 ## Testing
 

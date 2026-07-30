@@ -1,6 +1,6 @@
 "use client";
 
-import { ALLOWED_MIMES, MAX_FILE_SIZE_BYTES, MAX_MESSAGE_ATTACHMENTS } from "@pharmachain/core";
+import { ALLOWED_MIMES, MAX_MESSAGE_ATTACHMENTS, validateUpload } from "@pharmachain/core";
 import { Badge } from "@pharmachain/ui/components/badge";
 import { Button } from "@pharmachain/ui/components/button";
 import { Textarea } from "@pharmachain/ui/components/textarea";
@@ -73,8 +73,11 @@ export function ThreadView({
   function addFiles(list: FileList | null) {
     if (!list) return;
     const next = [...files, ...Array.from(list)].slice(0, MAX_MESSAGE_ATTACHMENTS);
-    if (next.some((f) => f.size > MAX_FILE_SIZE_BYTES)) {
-      toast.error("Attachments are limited to 10MB each");
+    const rejection = next
+      .map((f) => validateUpload("MESSAGE_ATTACHMENT", f))
+      .find((message) => message !== null);
+    if (rejection) {
+      toast.error(rejection);
       return;
     }
     setFiles(next);

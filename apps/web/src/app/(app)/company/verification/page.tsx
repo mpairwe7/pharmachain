@@ -18,7 +18,7 @@ import { fmtDate } from "@/lib/format";
 
 export const metadata = { title: "Verification" };
 
-function ItemStatusBadge({ status }: { status: string }) {
+function ItemStatusBadge({ status, awaitingReview }: { status: string; awaitingReview: boolean }) {
   switch (status) {
     case "MISSING":
       return <Badge variant="destructive">missing</Badge>;
@@ -27,7 +27,13 @@ function ItemStatusBadge({ status }: { status: string }) {
     case "EXPIRING_SOON":
       return <Badge variant="warning">expiring soon</Badge>;
     default:
-      return <Badge variant="success">uploaded</Badge>;
+      // US-102: an uploaded document still has to be reviewed. A bare
+      // "uploaded" reads as "accepted", which it is not yet.
+      return awaitingReview ? (
+        <Badge variant="info">uploaded, pending review</Badge>
+      ) : (
+        <Badge variant="success">uploaded</Badge>
+      );
   }
 }
 
@@ -88,7 +94,10 @@ export default async function VerificationPage() {
                     </div>
                   )}
                 </div>
-                <ItemStatusBadge status={item.status} />
+                <ItemStatusBadge
+                  status={item.status}
+                  awaitingReview={checklist.verificationStatus === "PENDING_VERIFICATION"}
+                />
                 <UploadButton
                   kind={item.kind as DocumentKind}
                   label={item.documentId ? "Replace" : "Upload"}
